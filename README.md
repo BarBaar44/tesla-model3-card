@@ -4,14 +4,14 @@
 
 A compact Lovelace card for a Tesla: the car as the picture, its status, battery and range, the charge limit, the lock state and one attention badge. Made for half a sections column (6 columns by 2 rows, about 120px high), next to Mushroom cards: the same card background and rounding, and the same type sizes. One JavaScript file, no build step, no dependencies, no card_mod, no Jinja.
 
-* **The car** fills the top of the card, as large as the space above the text allows. While someone is in the car it drives off nose first and comes back in from the other side, in a loop.
+* **The car** fills the top of the card, as large as the space above the text allows. While someone is in the car its wheels spin and the body bobs a little on its suspension.
 * **Name line:** "Tesla" with the lock (grey when locked, red when unlocked) and the badge right after it, and the battery % on the right.
 * **Status line:** the status text, trimmed and cut off with an ellipsis when it is too long, with the range on the right.
 * **Battery bar:** green, amber below 50%, red below 20%, pulsing yellow while charging, with a tick at the charge limit.
 * **Badge:** icon and colour from two sensors; when both are empty there is no badge.
 * All animations stop when the system asks for reduced motion. Re-renders only when one of its own entities changes.
 
-![Driving](https://raw.githubusercontent.com/BarBaar44/tesla-model3-card/main/animation.gif)
+![Driving: wheels spin, the body bobs](https://raw.githubusercontent.com/BarBaar44/tesla-model3-card/main/animation.gif)
 
 ## Install
 
@@ -36,6 +36,7 @@ grid_options:
 | ------------- | -------------------------------------- |
 | `name`        | `Tesla`                                |
 | `image`       | `/local/teslam3.png?v=2`               |
+| `wheels`      | the two wheels of the default picture; none for another picture. See below |
 | `entities`    | see below                              |
 | `tap_action`  | `more-info` on the `more_info` entity  |
 | `hold_action` | `more-info` on the `more_info` entity  |
@@ -72,9 +73,22 @@ Each key takes any CSS color (`"#ff9800"`, `orange`, `var(--orange-color)`).
 | `locked`         | lock icon when locked         | `var(--secondary-text-color)`|
 | `unlocked`       | lock icon when unlocked       | `var(--red-color)`           |
 
+### Wheels
+
+The wheels are part of the picture. While driving, the card lays a round crop of each wheel over the picture and turns it. Because the picture is drawn in perspective the wheels are ovals, so each crop is squashed back into its oval, and at rest it matches the picture exactly.
+
+The default positions fit `teslam3.png`. For another picture give your own, in % of the picture's width (`x`, `rx`) and height (`y`, `ry`): the centre of the wheel, and its horizontal and vertical radius up to just inside the tyre. `wheels: []` switches the spinning off; the bob stays.
+
+```yaml
+image: /local/my-car.png
+wheels:
+  - { x: 35.4, y: 71.3, rx: 8.3, ry: 22.4 }   # front
+  - { x: 91.1, y: 64.9, rx: 5.6, ry: 19.0 }   # rear
+```
+
 ## Layout
 
-At 6 by 2 the card is about 176px wide on a phone and 256px on a desktop, and 120px high. The car sits on top because its 2.5 : 1 shape needs the width: there it is about 132 by 53px, while next to the text it would shrink to about 75 by 30px on a phone. The lock and badge sit beside the name rather than in the corners, so the car never overlaps them, also not while it drives. The height is what limits the car, so on a desktop it stays the same size with more room around it.
+At 6 by 2 the card is about 176px wide on a phone and 256px on a desktop, and 120px high. The car sits on top because its 2.5 : 1 shape needs the width: there it is about 132 by 53px, while next to the text it would shrink to about 75 by 30px on a phone. The lock and badge sit beside the name rather than in the corners, so the car never overlaps them. The height is what limits the car, so on a desktop it stays the same size with more room around it.
 
 ## Development
 

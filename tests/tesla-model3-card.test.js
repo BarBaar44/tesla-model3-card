@@ -125,6 +125,45 @@ assert(r.driving);
 r = v(base({ drive: "off" }));
 assert(!r.driving);
 
+/* ---- wheels ------------------------------------------------------------------ */
+{
+  // default picture: two wheel crops, placed from the default positions
+  const c = render(base({ drive: "on" }));
+  const wheels = c.shadowRoot.querySelectorAll(".wheel");
+  assert.equal(wheels.length, 2, "front and rear wheel");
+  const ar = 504 / 203;
+  const front = wheels[0];
+  assert.equal(front.style.left, "35.36%");
+  assert.equal(parseFloat(front.style.top).toFixed(2), (71.28 - 22.41).toFixed(2));
+  assert.equal(parseFloat(front.style.height).toFixed(2), (2 * 22.41).toFixed(2));
+  const k = (0.0827 * ar) / 0.2241;
+  assert.match(front.style.transform, new RegExp(`translateX\\(-50%\\) scaleX\\(${k.toFixed(4)}`), "squashed into its oval");
+  const pic = front.querySelector(".spin img");
+  assert.equal(pic.getAttribute("src"), "/local/teslam3.png?v=2", "the crop shows the same picture");
+  // at rest the crop's picture puts the wheel centre in the middle of the circle
+  const d = 2 * 0.2241;
+  const left = parseFloat(pic.style.left) / 100, width = parseFloat(pic.style.width) / 100;
+  assert(Math.abs(left + 0.3536 * width - 0.5) < 1e-6, "wheel centre x in the middle");
+  const top = parseFloat(pic.style.top) / 100, height = parseFloat(pic.style.height) / 100;
+  assert(Math.abs(top + 0.7128 * height - 0.5) < 1e-6, "wheel centre y in the middle");
+  assert(Math.abs(height - 1 / d) < 1e-6);
+  // a different aspect ratio once the picture has loaded moves the wheels with it
+  c._placeWheels(2);
+  assert.equal(c.shadowRoot.querySelectorAll(".wheel").length, 2, "replaced, not added");
+  assert.equal(c._el.carbox.style.getPropertyValue("--tc-ar"), "2");
+}
+{
+  // another picture: no default wheels, unless given
+  let c = render(base(), { image: "/local/my-car.png" });
+  assert.equal(c.shadowRoot.querySelectorAll(".wheel").length, 0, "default wheels only fit the default picture");
+  c = render(base(), { image: "/local/my-car.png", wheels: [{ x: 20, y: 70, rx: 9, ry: 22 }] });
+  assert.equal(c.shadowRoot.querySelectorAll(".wheel").length, 1);
+  c = render(base(), { wheels: [] });
+  assert.equal(c.shadowRoot.querySelectorAll(".wheel").length, 0, "wheels: [] switches them off");
+  c = render(base(), { image: "/local/teslam3.png" });
+  assert.equal(c.shadowRoot.querySelectorAll(".wheel").length, 2, "default picture without ?v=");
+}
+
 /* ---- config ------------------------------------------------------------------ */
 
 r = v(base({ lock: "unlocked", bi: "mdi:update" }), {
@@ -142,6 +181,8 @@ const bad = [
   [{ image: 5 }, /image must be a URL/],
   [{ colors: "red" }, /colors must be a map/],
   [{ entity: "sensor.x" }, /Unknown option 'entity'/],
+  [{ wheels: "front" }, /wheels must be a list/],
+  [{ wheels: [{ x: 1, y: 2, rx: 3 }] }, /wheels\[0\] needs numbers x, y, rx and ry/],
 ];
 for (const [cfg, re] of bad) assert.throws(() => new Card().setConfig(cfg), re);
 assert.deepEqual(Card.getStubConfig(), {});

@@ -10,7 +10,7 @@
  * https://github.com/BarBaar44/tesla-model3-card  (MIT)
  */
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const HOLD_MS = 500;
 const MOVE_TOLERANCE_PX = 10;
@@ -18,6 +18,12 @@ const MOVE_TOLERANCE_PX = 10;
 const TESLA_DEFAULTS = {
   name: "Tesla",
   image: "/local/teslam3.png?v=2",
+  // Wheels of the default picture (504 x 203), in % of the picture's width (x, rx)
+  // and height (y, ry). The wheels are drawn in perspective, so they are ovals.
+  wheels: [
+    { x: 35.36, y: 71.28, rx: 8.27, ry: 22.41 }, // front
+    { x: 91.07, y: 64.90, rx: 5.58, ry: 18.97 }, // rear
+  ],
   entities: {
     status: "sensor.tesla_status",
     badge_icon: "sensor.tesla_badge_icon",
@@ -67,17 +73,27 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   ha-card.pressed { opacity: .8; }
   ha-card:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
 
-  /* The car: as large as the space left above the text allows, never wider than the card. */
-  .car { min-height: 0; overflow: hidden; display: flex; justify-content: center; align-items: flex-end; }
-  .car img { display: block; height: 100%; width: auto; max-width: 100%; object-fit: contain; }
-  .car img.missing { visibility: hidden; }
-  /* The picture faces left: driving forward is to the left, back in from the right. */
-  .driving .car img { animation: tc-drive 3.2s ease-in-out infinite; }
-  @keyframes tc-drive {
-    0% { transform: translateX(0); }
-    45% { transform: translateX(-120%); }
-    46% { transform: translateX(120%); }
-    100% { transform: translateX(0); }
+  /* The car: as large as the space left above the text allows, never wider than the card.
+     The box keeps the picture's aspect ratio, so the wheels can be placed in % of it. */
+  .car { min-height: 0; overflow: hidden; display: flex; justify-content: center; align-items: flex-end; container-type: size; }
+  .carbox { position: relative; flex: none; aspect-ratio: var(--tc-ar, 2.483);
+    width: min(100cqw, calc(100cqh * var(--tc-ar, 2.483))); }
+  .carbox > img { display: block; width: 100%; height: 100%; }
+  .carbox.missing { visibility: hidden; }
+
+  /* Spinning wheels: a round crop of each wheel, squashed back into its oval. Only while driving. */
+  .wheel { display: none; position: absolute; aspect-ratio: 1; }
+  .driving .wheel { display: block; }
+  .wheel .spin { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
+  .wheel .spin img { position: absolute; display: block; max-width: none; }
+  .driving .wheel .spin { animation: tc-spin .5s linear infinite; }
+  /* The picture faces left, so the wheels turn counter-clockwise. */
+  @keyframes tc-spin { to { transform: rotate(-360deg); } }
+  /* And the body bobs a little on its suspension. */
+  .driving .carbox { animation: tc-bob .45s ease-in-out infinite alternate; transform-origin: 60% 85%; }
+  @keyframes tc-bob {
+    from { transform: translateY(0) rotate(0deg); }
+    to { transform: translateY(-1.2px) rotate(-.4deg); }
   }
 
   /* Text: Mushroom sizes. */
@@ -111,7 +127,8 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .tick.show { display: block; }
 
   @media (prefers-reduced-motion: reduce) {
-    .driving .car img, .charging .fill { animation: none; }
+    .driving .carbox, .driving .wheel .spin, .charging .fill { animation: none; }
+    .driving .wheel { display: none; }
     .fill { transition: none; }
   }
 `;
@@ -130,7 +147,7 @@ class TeslaModel3Card extends HTMLElement {
 
   setConfig(config) {
     const c = config || {};
-    const known = ["type", "name", "image", "entities", "tap_action", "hold_action", "colors",
+    const known = ["type", "name", "image", "wheels", "entities", "tap_action", "hold_action", "colors",
       "grid_options", "layout_options", "view_layout", "visibility", "card_mod"];
     for (const k of Object.keys(c)) {
       if (!known.includes(k)) throw new Error(`Unknown option '${k}'. Known: ${known.slice(1, 7).join(", ")}`);
@@ -149,10 +166,21 @@ class TeslaModel3Card extends HTMLElement {
     if (c.colors != null && (typeof c.colors !== "object" || Array.isArray(c.colors))) {
       throw new Error("colors must be a map, e.g. battery: green");
     }
+    const image = c.image == null ? TESLA_DEFAULTS.image : c.image;
+    // Default wheel positions only fit the default picture.
+    let wheels = c.wheels;
+    if (wheels == null) wheels = /(^|\/)teslam3\.png(\?|$)/.test(image) ? TESLA_DEFAULTS.wheels : [];
+    if (!Array.isArray(wheels)) throw new Error("wheels must be a list of { x, y, rx, ry } in % of the picture");
+    wheels.forEach((wh, i) => {
+      if (!wh || typeof wh !== "object" || ["x", "y", "rx", "ry"].some((k) => teslaNum(wh[k]) === null)) {
+        throw new Error(`wheels[${i}] needs numbers x, y, rx and ry (in % of the picture)`);
+      }
+    });
     const entities = { ...TESLA_DEFAULTS.entities, ...ent };
     this._config = {
       name: c.name == null ? TESLA_DEFAULTS.name : String(c.name),
-      image: c.image == null ? TESLA_DEFAULTS.image : c.image,
+      image,
+      wheels: wheels.map((wh) => ({ x: +wh.x, y: +wh.y, rx: +wh.rx, ry: +wh.ry })),
       entities,
       tap_action: c.tap_action || { action: "more-info" },
       hold_action: c.hold_action || { action: "more-info" },
@@ -209,7 +237,7 @@ class TeslaModel3Card extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${TESLA_STYLE}</style>
       <ha-card role="button" tabindex="0">
-        <div class="car"><img alt=""></div>
+        <div class="car"><div class="carbox"><img alt=""></div></div>
         <div class="line l1">
           <span class="name"><span class="p"></span>
             <span class="lock"><ha-icon></ha-icon></span>
@@ -225,17 +253,62 @@ class TeslaModel3Card extends HTMLElement {
       </ha-card>`;
     const $ = (s) => this.shadowRoot.querySelector(s);
     this._el = {
-      card: $("ha-card"), img: $(".car img"), name: $(".p"),
+      card: $("ha-card"), carbox: $(".carbox"), img: $(".carbox > img"), name: $(".p"),
       lock: $(".lock"), lockIcon: $(".lock ha-icon"), badge: $(".badge"), badgeIcon: $(".badge ha-icon"),
       pct: $(".pct"), status: $(".status"), range: $(".range"),
       bar: $(".bar"), fill: $(".fill"), tick: $(".tick"),
     };
     this._el.name.textContent = this._config.name;
     const img = this._el.img;
-    img.addEventListener("error", () => img.classList.add("missing"));
-    img.addEventListener("load", () => img.classList.remove("missing"));
+    const box = this._el.carbox;
+    img.addEventListener("error", () => box.classList.add("missing"));
+    img.addEventListener("load", () => {
+      box.classList.remove("missing");
+      if (img.naturalWidth && img.naturalHeight) this._placeWheels(img.naturalWidth / img.naturalHeight);
+    });
     img.src = this._config.image;
+    this._placeWheels(504 / 203);
     this._bindPress(this._el.card);
+  }
+
+  /*
+   * Puts a round, rotatable crop of the picture over each wheel. Each wheel is
+   * an oval (rx by ry); the crop is a circle of diameter 2 * ry, squashed
+   * horizontally by k = rx / ry, and the picture inside it is stretched by 1 / k,
+   * so at rest it matches the picture exactly and it turns as a round wheel.
+   * ar = picture width / height. All values are in % of the car box.
+   */
+  _placeWheels(ar) {
+    const box = this._el.carbox;
+    box.style.setProperty("--tc-ar", String(ar));
+    box.querySelectorAll(".wheel").forEach((el) => el.remove());
+    for (const wh of this._config.wheels) {
+      const x = wh.x / 100, y = wh.y / 100, rx = wh.rx / 100, ry = wh.ry / 100;
+      if (rx <= 0 || ry <= 0) continue;
+      const k = (rx * ar) / ry; // oval width / height in pixels
+      const d = 2 * ry; // circle diameter, as a fraction of the box height
+      const el = document.createElement("div");
+      el.className = "wheel";
+      el.style.left = `${x * 100}%`;
+      el.style.top = `${(y - ry) * 100}%`;
+      el.style.height = `${d * 100}%`;
+      el.style.transform = `translateX(-50%) scaleX(${k})`;
+      const pic = document.createElement("img");
+      pic.alt = "";
+      pic.src = this._config.image;
+      // Picture position inside the circle, before the squash (fractions of the diameter).
+      const left = 0.5 - (x * ar) / (d * k);
+      const top = 0.5 - y / d;
+      pic.style.left = `${left * 100}%`;
+      pic.style.top = `${top * 100}%`;
+      pic.style.width = `${(ar / (d * k)) * 100}%`;
+      pic.style.height = `${(1 / d) * 100}%`;
+      const spin = document.createElement("div");
+      spin.className = "spin";
+      spin.appendChild(pic);
+      el.appendChild(spin);
+      box.appendChild(el);
+    }
   }
 
   /* ---- actions ------------------------------------------------------------ */

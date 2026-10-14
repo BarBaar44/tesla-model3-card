@@ -7,7 +7,7 @@ HACS dashboard card (Lovelace) for the owner's Tesla Model 3 ("Calimero"). Owner
 | File | Purpose |
 |---|---|
 | `tesla-model3-card.js` | The whole card: plain custom element, no build step, no dependencies. `TESLA_DEFAULTS` holds the owner's entities and picture, `TESLA_COLORS` the colours. |
-| `tests/tesla-model3-card.test.js` | jsdom tests: text, battery colours and tick, lock, badge, driving, config errors, re-render, actions. `npm test`. |
+| `tests/tesla-model3-card.test.js` | jsdom tests: text, battery colours and tick, lock, badge, driving, wheel placement, config errors, re-render, actions. `npm test`. |
 | `hacs.json` | HACS manifest (HA 2024.11+). |
 | `README.md` | User docs, also the HACS info page. Keep the entity and colour tables in sync with the code. |
 | `CHANGELOG.md` | One `## vX.Y.Z` section per release; the Release workflow uses it as the release notes. |
@@ -20,7 +20,7 @@ HACS dashboard card (Lovelace) for the owner's Tesla Model 3 ("Calimero"). Owner
 * Nothing may overlap or run off the card at phone width. After any layout change, render it in a real browser (Playwright) in a 12-column, 56px-row grid at 360px and 520px section width, and check every element against the card edge.
 * Every `ha-icon` gets an explicit size (the owner's earlier button-card attempt had an `ha-icon` stretch over the whole card).
 * The lock and badge sit next to the name, not in the corners: in the corners they overlap the car, especially while it drives.
-* The picture faces left, so driving forward moves it left, then back in from the right. Ask before changing the direction.
+* Driving: the wheels spin and the body bobs (no drive-off loop since 0.2.0). The wheels are part of the picture: `_placeWheels` lays a round crop of the picture over each wheel, squashed by k = rx/ry into the wheel's oval, with the picture inside stretched by 1/k, so at rest it matches pixel for pixel (checked with a screenshot diff). The picture faces left, so the wheels turn counter-clockwise. Default `wheels` only apply to `teslam3.png`; measured from the PNG (hub centroid, white rim ring), radius just inside the tyre.
 * The status sensor can carry whitespace: always trim. Badge: no badge when the icon is empty.
 * Tap and hold go through `hass-action` (HA's own handler). The card never calls services.
 * Re-render only when one of the card's own entities changes; the DOM is built once per config and updated in place. All animations stop under `prefers-reduced-motion`.

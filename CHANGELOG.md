@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.0
+
+### Changed
+* **Driving animation:** while someone is in the car the wheels now spin and the body bobs a little on its suspension, instead of the car driving off and coming back. The car stays in place, so it never leaves the card.
+
+### Added
+* `wheels`: the wheel positions in the picture, in % of its width and height. Defaults fit `teslam3.png`; another picture gets no spinning wheels until you set them, and `wheels: []` switches them off.
+
 ## v0.1.0
 
 First release. A compact card for a Tesla, made to sit at 6 by 2 in a sections view next to Mushroom cards, in the style of the Appliance, Vacuum, Room and Heating Control cards.
