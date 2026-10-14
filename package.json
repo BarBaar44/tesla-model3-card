@@ -1,0 +1,11 @@
+{
+  "name": "tesla-model3-card",
+  "private": true,
+  "description": "Development only: tests for tesla-model3-card.js. The card itself has no dependencies.",
+  "scripts": {
+    "test": "node tests/tesla-model3-card.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}

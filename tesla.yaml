@@ -1,0 +1,29 @@
+# Minimal: the default entities, picture and size.
+type: custom:tesla-model3-card
+
+---
+# Everything spelled out. Any entity can be replaced, or set to null to
+# switch that part off.
+type: custom:tesla-model3-card
+name: Tesla
+image: /local/teslam3.png?v=2
+entities:
+  status: sensor.tesla_status
+  badge_icon: sensor.tesla_badge_icon
+  badge_color: sensor.tesla_badge_color
+  battery: sensor.calimero_battery_level
+  range: sensor.calimero_battery_range
+  charge_limit: number.calimero_charge_limit
+  charging: sensor.calimero_charging
+  driving: binary_sensor.calimero_user_present
+  lock: lock.calimero_lock
+  more_info: binary_sensor.calimero_status
+tap_action:
+  action: more-info
+hold_action:
+  action: more-info
+colors:
+  battery: var(--green-color)
+grid_options:
+  columns: 6
+  rows: 2
