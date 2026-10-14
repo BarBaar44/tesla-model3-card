@@ -9,14 +9,15 @@ name: Tesla
 image: /local/teslam3.png?v=2
 entities:
   status: sensor.tesla_status
-  badge_icon: sensor.tesla_badge_icon
-  badge_color: sensor.tesla_badge_color
   battery: sensor.calimero_battery_level
   range: sensor.calimero_battery_range
   charge_limit: number.calimero_charge_limit
   charging: sensor.calimero_charging
   driving: binary_sensor.calimero_user_present
   lock: lock.calimero_lock
+  sentry: switch.calimero_sentry_mode
+  time_to_full: sensor.calimero_time_to_full_charge
+  update: update.calimero_update
   more_info: binary_sensor.calimero_status
 tap_action:
   action: more-info

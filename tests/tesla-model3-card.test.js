@@ -13,14 +13,15 @@ assert(Card, "registered");
 const st = (state, attributes = {}) => ({ state: String(state), attributes, last_changed: "x" });
 const base = (o = {}) => ({
   "sensor.tesla_status": st(o.status ?? "Charged"),
-  "sensor.tesla_badge_icon": st(o.bi ?? ""),
-  "sensor.tesla_badge_color": st(o.bc ?? ""),
   "sensor.calimero_battery_level": st(o.pct ?? 80),
   "sensor.calimero_battery_range": st(o.km ?? 390.4, o.unit === null ? {} : { unit_of_measurement: o.unit || "km" }),
   "number.calimero_charge_limit": st(o.limit ?? 80),
   "sensor.calimero_charging": st(o.ch ?? "complete"),
   "binary_sensor.calimero_user_present": st(o.drive ?? "off"),
   "lock.calimero_lock": st(o.lock ?? "locked"),
+  "switch.calimero_sentry_mode": st(o.sentry ?? "off"),
+  "sensor.calimero_time_to_full_charge": st(o.ttf ?? 0, o.ttfUnit === null ? {} : { unit_of_measurement: o.ttfUnit || "h" }),
+  "update.calimero_update": st(o.upd ?? "off"),
   "binary_sensor.calimero_status": st("on"),
 });
 const hass = (states) => ({ states });
@@ -41,14 +42,16 @@ function read(c) {
     range: e.range.textContent,
     fill: e.fill.style.width,
     colour: e.fill.style.getPropertyValue("--bc"),
-    barHidden: e.bar.classList.contains("hide"),
+    barHidden: e.barrow.classList.contains("hide"),
     tick: e.tick.classList.contains("show") ? e.tick.style.left : null,
     charging: e.card.classList.contains("charging"),
     driving: e.card.classList.contains("driving"),
     lock: e.lock.classList.contains("show") ? (e.lock.classList.contains("open") ? "open" : "locked") : null,
     lockIcon: e.lockIcon.getAttribute("icon"),
-    badge: e.badge.classList.contains("show") ? e.badgeIcon.getAttribute("icon") : null,
-    badgeColour: e.badge.style.getPropertyValue("--b"),
+    sentry: e.sentry.classList.contains("show") ? (e.sentry.classList.contains("on") ? "on" : "off") : null,
+    charge: e.charge.classList.contains("show") ? e.chargeLeft.textContent : null,
+    update: e.update.classList.contains("show"),
+    pctInBar: e.pct.parentElement === e.barrow,
     img: e.img.getAttribute("src"),
   };
 }
@@ -107,18 +110,40 @@ assert.equal(r.lockIcon, "mdi:lock-open-variant");
 r = v(base({ lock: "jammed" }));
 assert.equal(r.lock, null, "unknown lock state: hidden");
 
-r = v(base({ bi: "mdi:power-plug", bc: "green" }));
-assert.equal(r.badge, "mdi:power-plug");
-assert.equal(r.badgeColour, "var(--green-color, #4caf50)");
-r = v(base({ bi: " mdi:update ", bc: "Yellow" }));
-assert.equal(r.badge, "mdi:update", "trimmed");
-assert.equal(r.badgeColour, "var(--yellow-color, #ffeb3b)");
-r = v(base({ bi: "mdi:exclamation", bc: "#ff0000" }));
-assert.equal(r.badgeColour, "#ff0000", "any CSS colour");
-r = v(base({ bi: "", bc: "" }));
-assert.equal(r.badge, null, "both empty: no badge");
-r = v(base({ bi: "", bc: "red" }));
-assert.equal(r.badge, null, "colour without icon: no badge");
+// sentry: on red, off grey, unknown hidden
+r = v(base({ sentry: "on" }));
+assert.equal(r.sentry, "on");
+r = v(base({ sentry: "off" }));
+assert.equal(r.sentry, "off", "off is shown too");
+r = v(base({ sentry: "unavailable" }));
+assert.equal(r.sentry, null);
+
+// charging: only while charging, with the time to full as h:mm
+r = v(base({ ch: "charging", ttf: 1.33 }));
+assert.equal(r.charge, "1:20", "hours to h:mm");
+r = v(base({ ch: "charging", ttf: 45, ttfUnit: "min" }));
+assert.equal(r.charge, "0:45", "minutes");
+r = v(base({ ch: "charging", ttf: 0 }));
+assert.equal(r.charge, "", "0: bolt only");
+r = v(base({ ch: "charging", ttf: "unknown" }));
+assert.equal(r.charge, "", "unknown: bolt only");
+r = v(base({ ch: "complete", ttf: 1 }));
+assert.equal(r.charge, null, "not charging: no badge");
+r = v(base({ ch: "disconnected", ttf: 2 }));
+assert.equal(r.charge, null);
+
+// update
+r = v(base({ upd: "on" }));
+assert(r.update);
+r = v(base({ upd: "off" }));
+assert(!r.update);
+r = v(base({ upd: "unavailable" }));
+assert(!r.update);
+
+// all three at once
+r = v(base({ sentry: "on", ch: "charging", ttf: 1.33, upd: "on" }));
+assert.deepEqual([r.sentry, r.charge, r.update], ["on", "1:20", true]);
+assert(r.pctInBar, "battery % sits at the end of the bar");
 
 r = v(base({ drive: "on" }));
 assert(r.driving);
@@ -166,13 +191,21 @@ assert(!r.driving);
 
 /* ---- config ------------------------------------------------------------------ */
 
-r = v(base({ lock: "unlocked", bi: "mdi:update" }), {
-  name: "Calimero", image: "/local/car.png", entities: { lock: null, badge_icon: "sensor.other_icon" },
+r = v(base({ lock: "unlocked", sentry: "on", upd: "on" }), {
+  name: "Calimero", image: "/local/car.png", entities: { lock: null, sentry: null, update: "update.other" },
 });
 assert.equal(r.name, "Calimero");
 assert.equal(r.img, "/local/car.png");
 assert.equal(r.lock, null, "null switches the lock off");
-assert.equal(r.badge, null, "badge from a different, missing sensor");
+assert.equal(r.sentry, null, "null switches sentry off");
+assert(!r.update, "update from a different, missing entity");
+
+// the 0.2 badge sensors are ignored, not an error
+{
+  const c = render(base(), { entities: { badge_icon: "sensor.tesla_badge_icon", badge_color: "sensor.tesla_badge_color" } });
+  assert(!("badge_icon" in c._config.entities));
+  assert(!c._ids.includes("sensor.tesla_badge_icon"));
+}
 
 const bad = [
   [{ entities: { batery: "sensor.x" } }, /unknown role 'batery'/],
@@ -261,6 +294,11 @@ async function editorTests() {
   const d2 = Editor.toData(full);
   d2.colors.battery = " ";
   assert.equal(Editor.toConfig(d2, full).colors, undefined, "empty colour dropped");
+
+  // a 0.2 config with the badge sensors loses them on the next save
+  const old = { type: "custom:tesla-model3-card", entities: { badge_icon: "sensor.tesla_badge_icon", battery: "sensor.b" } };
+  assert.deepEqual(Editor.toConfig(Editor.toData(old), old).entities, { battery: "sensor.b" });
+  assert.equal(Editor.toData(old).entities.sentry, "switch.calimero_sentry_mode");
 
   // every config the editor writes is accepted by the card
   new Card().setConfig(c1);

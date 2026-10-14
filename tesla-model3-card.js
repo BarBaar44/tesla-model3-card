@@ -1,7 +1,8 @@
 /*
  * Tesla Model 3 Card
  * A compact Lovelace card for a Tesla: the car as the picture, its status,
- * battery and range, the charge limit, lock state and one attention badge.
+ * battery and range, the charge limit, the lock, and sentry, charging and
+ * update badges.
  *
  * Sized for half a sections column (6 columns by 2 rows, about 120px high)
  * next to Mushroom cards, with the same card background, rounding and type.
@@ -10,7 +11,7 @@
  * https://github.com/BarBaar44/tesla-model3-card  (MIT)
  */
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 const HOLD_MS = 500;
 const MOVE_TOLERANCE_PX = 10;
@@ -26,14 +27,15 @@ const TESLA_DEFAULTS = {
   ],
   entities: {
     status: "sensor.tesla_status",
-    badge_icon: "sensor.tesla_badge_icon",
-    badge_color: "sensor.tesla_badge_color",
     battery: "sensor.calimero_battery_level",
     range: "sensor.calimero_battery_range",
     charge_limit: "number.calimero_charge_limit",
     charging: "sensor.calimero_charging",
     driving: "binary_sensor.calimero_user_present",
     lock: "lock.calimero_lock",
+    sentry: "switch.calimero_sentry_mode",
+    time_to_full: "sensor.calimero_time_to_full_charge",
+    update: "update.calimero_update",
     more_info: "binary_sensor.calimero_status",
   },
 };
@@ -47,14 +49,13 @@ const TESLA_COLORS = {
   limit: ["--tc-limit", "var(--primary-text-color, #e1e1e1)"],
   locked: ["--tc-locked", "var(--secondary-text-color, #9b9b9b)"],
   unlocked: ["--tc-unlocked", "var(--red-color, #f44336)"],
+  sentry_on: ["--tc-sentry-on", "var(--red-color, #f44336)"],
+  sentry_off: ["--tc-sentry-off", "var(--secondary-text-color, #9b9b9b)"],
+  update: ["--tc-update", "var(--blue-color, #2196f3)"],
 };
 
-/* Badge colour names as the badge sensor reports them. Anything else is used as CSS. */
-const TESLA_BADGE_COLORS = {
-  red: "var(--red-color, #f44336)", yellow: "var(--yellow-color, #ffeb3b)", green: "var(--green-color, #4caf50)",
-  amber: "var(--amber-color, #ffc107)", orange: "var(--orange-color, #ff9800)", blue: "var(--blue-color, #2196f3)",
-  grey: "var(--grey-color, #9e9e9e)",
-};
+/* Entity roles of 0.1 and 0.2 that 0.3 no longer uses: ignored with a warning, not an error. */
+const TESLA_REMOVED_ROLES = ["badge_icon", "badge_color"];
 
 const TESLA_BAD = ["unknown", "unavailable", "none", ""];
 const teslaNum = (v) => (v === undefined || v === null || v === "" || isNaN(Number(v)) ? null : Number(v));
@@ -112,14 +113,24 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .lock.show { display: flex; }
   .lock.open { color: var(--tc-unlocked); }
   .lock ha-icon { --mdc-icon-size: 14px; width: 14px; height: 14px; display: flex; }
-  .badge { display: none; flex: none; width: 16px; height: 16px; border-radius: 50%;
-    align-items: center; justify-content: center; color: var(--b); background: color-mix(in srgb, var(--b) 24%, transparent); }
+  /* Badges: a coloured icon on a tinted circle; the charging one is a pill with the time left. */
+  .badge { display: none; flex: none; height: 16px; min-width: 16px; box-sizing: border-box; border-radius: 8px;
+    align-items: center; justify-content: center; gap: 2px; color: var(--b); background: color-mix(in srgb, var(--b) 24%, transparent);
+    font-size: 11px; line-height: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
   .badge.show { display: flex; }
-  .badge ha-icon { --mdc-icon-size: 11px; width: 11px; height: 11px; display: flex; }
+  .badge ha-icon { --mdc-icon-size: 11px; width: 11px; height: 11px; display: flex; flex: none; }
+  .badge.sentry { --b: var(--tc-sentry-off); }
+  .badge.sentry.on { --b: var(--tc-sentry-on); }
+  .badge.charge { --b: var(--tc-charging); }
+  .badge.charge.timed { padding: 0 5px 0 3px; }
+  .badge.update { --b: var(--tc-update); }
 
-  .bar { position: relative; height: 5px; margin-top: 6px; border-radius: 3px;
+  /* Battery bar with the % at its end. */
+  .barrow { display: flex; align-items: center; gap: 6px; margin-top: 3px; min-width: 0; height: 12px; }
+  .barrow.hide { visibility: hidden; }
+  .bar { position: relative; flex: 1; height: 5px; border-radius: 3px;
     background: color-mix(in srgb, var(--secondary-text-color) 22%, transparent); }
-  .bar.hide { visibility: hidden; }
+  .pct { flex: none; font-size: 12px; line-height: 12px; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
   .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: var(--bc); transition: width .4s; }
   .charging .fill { animation: tc-pulse 1.6s ease-in-out infinite; }
   @keyframes tc-pulse { 50% { opacity: .45; } }
@@ -159,6 +170,10 @@ class TeslaModel3Card extends HTMLElement {
     const ent = c.entities == null ? {} : c.entities;
     if (typeof ent !== "object" || Array.isArray(ent)) throw new Error("entities must be a map, e.g. battery: sensor.my_battery");
     for (const [k, v] of Object.entries(ent)) {
+      if (TESLA_REMOVED_ROLES.includes(k)) {
+        console.warn(`tesla-model3-card: entities.${k} is no longer used since 0.3.0 (sentry, time_to_full and update replace the badge sensors). Remove it.`);
+        continue;
+      }
       if (!(k in TESLA_DEFAULTS.entities)) {
         throw new Error(`entities: unknown role '${k}'. Known: ${Object.keys(TESLA_DEFAULTS.entities).join(", ")}`);
       }
@@ -180,7 +195,8 @@ class TeslaModel3Card extends HTMLElement {
         throw new Error(`wheels[${i}] needs numbers x, y, rx and ry (in % of the picture)`);
       }
     });
-    const entities = { ...TESLA_DEFAULTS.entities, ...ent };
+    const entities = { ...TESLA_DEFAULTS.entities };
+    for (const [k, v] of Object.entries(ent)) if (!TESLA_REMOVED_ROLES.includes(k)) entities[k] = v;
     this._config = {
       name: c.name == null ? TESLA_DEFAULTS.name : String(c.name),
       image,
@@ -245,22 +261,24 @@ class TeslaModel3Card extends HTMLElement {
         <div class="line l1">
           <span class="name"><span class="p"></span>
             <span class="lock"><ha-icon></ha-icon></span>
-            <span class="badge"><ha-icon></ha-icon></span>
+            <span class="badge sentry" title="Sentry mode"><ha-icon icon="mdi:cctv"></ha-icon></span>
+            <span class="badge charge" title="Charging"><ha-icon icon="mdi:lightning-bolt"></ha-icon><span class="left"></span></span>
+            <span class="badge update" title="Software update available"><ha-icon icon="mdi:update"></ha-icon></span>
           </span>
-          <span class="s num pct"></span>
         </div>
         <div class="line">
           <span class="s status"></span>
           <span class="s num range"></span>
         </div>
-        <div class="bar"><div class="fill"></div><div class="tick"></div></div>
+        <div class="barrow"><div class="bar"><div class="fill"></div><div class="tick"></div></div><span class="pct"></span></div>
       </ha-card>`;
     const $ = (s) => this.shadowRoot.querySelector(s);
     this._el = {
       card: $("ha-card"), carbox: $(".carbox"), img: $(".carbox > img"), name: $(".p"),
-      lock: $(".lock"), lockIcon: $(".lock ha-icon"), badge: $(".badge"), badgeIcon: $(".badge ha-icon"),
+      lock: $(".lock"), lockIcon: $(".lock ha-icon"),
+      sentry: $(".badge.sentry"), charge: $(".badge.charge"), chargeLeft: $(".badge.charge .left"), update: $(".badge.update"),
       pct: $(".pct"), status: $(".status"), range: $(".range"),
-      bar: $(".bar"), fill: $(".fill"), tick: $(".tick"),
+      barrow: $(".barrow"), fill: $(".fill"), tick: $(".tick"),
     };
     this._el.name.textContent = this._config.name;
     const img = this._el.img;
@@ -383,6 +401,17 @@ class TeslaModel3Card extends HTMLElement {
     return TESLA_BAD.includes(v.toLowerCase()) ? null : v;
   }
 
+  /* Time to full as h:mm, from a sensor in hours (default), minutes or seconds. Null when unknown or 0. */
+  _timeLeft() {
+    const s = this._s("time_to_full");
+    const n = teslaNum(this._val("time_to_full"));
+    if (n === null || n <= 0) return null;
+    const unit = String((s.attributes && s.attributes.unit_of_measurement) || "h").toLowerCase();
+    const min = Math.round(unit === "min" ? n : unit === "s" ? n / 60 : n * 60);
+    if (min <= 0) return null;
+    return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}`;
+  }
+
   _update() {
     if (!this._hass || !this._el) return;
     const e = this._el;
@@ -407,7 +436,7 @@ class TeslaModel3Card extends HTMLElement {
     else if (pct !== null && pct < 20) colour = "--tc-battery-low";
     else if (pct !== null && pct < 50) colour = "--tc-battery-medium";
     e.card.classList.toggle("charging", charging);
-    e.bar.classList.toggle("hide", pct === null);
+    e.barrow.classList.toggle("hide", pct === null);
     e.fill.style.setProperty("--bc", `var(${colour})`);
     e.fill.style.width = `${pct === null ? 0 : Math.max(0, Math.min(100, pct))}%`;
 
@@ -426,16 +455,21 @@ class TeslaModel3Card extends HTMLElement {
       e.lock.title = lock === "locked" ? "Locked" : "Unlocked";
     }
 
-    // Badge: icon and colour from their sensors, both empty means none
-    const bIcon = this._val("badge_icon");
-    const bColour = this._val("badge_color");
-    const showBadge = !!bIcon && /^[a-z0-9_-]+:[a-z0-9-]+$/i.test(bIcon);
-    e.badge.classList.toggle("show", showBadge);
-    if (showBadge) {
-      if (e.badgeIcon.getAttribute("icon") !== bIcon) e.badgeIcon.setAttribute("icon", bIcon);
-      const c = bColour ? TESLA_BADGE_COLORS[bColour.toLowerCase()] || bColour : "var(--secondary-text-color)";
-      e.badge.style.setProperty("--b", c);
-    }
+    // Sentry: red when on, grey when off, hidden when unknown
+    const sentry = String(this._val("sentry") || "").toLowerCase();
+    e.sentry.classList.toggle("show", sentry === "on" || sentry === "off");
+    e.sentry.classList.toggle("on", sentry === "on");
+    e.sentry.title = sentry === "on" ? "Sentry mode on" : "Sentry mode off";
+
+    // Charging: only while charging, with the time to full when known
+    const left = charging ? this._timeLeft() : null;
+    e.charge.classList.toggle("show", charging);
+    e.charge.classList.toggle("timed", !!left);
+    set(e.chargeLeft, left || "");
+    e.charge.title = left ? `Charging, ${left} to full` : "Charging";
+
+    // Update available
+    e.update.classList.toggle("show", String(this._val("update") || "").toLowerCase() === "on");
 
     // Driving
     const s = this._s("driving");
@@ -464,8 +498,9 @@ const TESLA_ENTITY_FIELDS = [
   ["charging", "Charging state", ["sensor", "binary_sensor"]],
   ["driving", "Someone in the car (driving)", ["binary_sensor", "input_boolean"]],
   ["lock", "Lock", ["lock"]],
-  ["badge_icon", "Badge icon", ["sensor"]],
-  ["badge_color", "Badge colour", ["sensor"]],
+  ["sentry", "Sentry mode", ["switch", "binary_sensor", "input_boolean"]],
+  ["time_to_full", "Time to full charge", ["sensor"]],
+  ["update", "Software update", ["update", "binary_sensor"]],
   ["more_info", "Tap and hold target", null],
 ];
 
@@ -520,6 +555,9 @@ const TESLA_EDITOR_LABELS = {
   battery_medium: "battery below 50%",
   battery_low: "battery below 20%",
   limit: "charge limit tick",
+  sentry_on: "sentry on",
+  sentry_off: "sentry off",
+  update: "Software update",
   ...Object.fromEntries(TESLA_ENTITY_FIELDS.map(([role, label]) => [role, label])),
 };
 
@@ -626,7 +664,7 @@ if (!window.customCards.some((c) => c.type === "tesla-model3-card")) {
   window.customCards.push({
     type: "tesla-model3-card",
     name: "Tesla Model 3 Card",
-    description: "Compact Tesla card: car picture, status, battery bar with charge limit, range, lock and badge.",
+    description: "Compact Tesla card: car picture, status, battery bar with charge limit, range, lock, sentry, charging and update badges.",
     preview: true,
     documentationURL: "https://github.com/BarBaar44/tesla-model3-card",
   });

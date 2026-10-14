@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.0
+
+### Added
+* **Sentry badge:** camera icon after the name, red when sentry mode is on, grey when off (`sentry`, default `switch.calimero_sentry_mode`).
+* **Charging badge:** a yellow pill with a lightning bolt and the time to full charge as h:mm, only while charging (`time_to_full`, default `sensor.calimero_time_to_full_charge`).
+* **Update badge:** blue update icon while a software update is available (`update`, default `update.calimero_update`).
+* Colours `sentry_on`, `sentry_off` and `update`, and the three entities in the visual editor.
+
+### Changed
+* The battery % moved from the name line to the end of the battery bar, to make room for the badges.
+
+### Removed
+* The template badge (`badge_icon` and `badge_color`, `sensor.tesla_badge_icon` and `sensor.tesla_badge_color`): the three badges replace it. Old configs that still set these roles keep working; the roles are ignored with a warning in the browser console, and the visual editor drops them on the next save.
+
 ## v0.2.0
 
 ### Changed
