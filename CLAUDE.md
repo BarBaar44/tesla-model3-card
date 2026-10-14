@@ -6,7 +6,7 @@ HACS dashboard card (Lovelace) for the owner's Tesla Model 3 ("Calimero"). Owner
 
 | File | Purpose |
 |---|---|
-| `tesla-model3-card.js` | The whole card: plain custom element, no build step, no dependencies. `TESLA_DEFAULTS` holds the owner's entities and picture, `TESLA_COLORS` the colours. |
+| `tesla-model3-card.js` | The whole card: plain custom element, no build step, no dependencies. `TESLA_DEFAULTS` holds the owner's entities, picture and its wheel positions, `TESLA_COLORS` the colours. |
 | `tests/tesla-model3-card.test.js` | jsdom tests: text, battery colours and tick, lock, badge, driving, wheel placement, config errors, re-render, actions. `npm test`. |
 | `hacs.json` | HACS manifest (HA 2024.11+). |
 | `README.md` | User docs, also the HACS info page. Keep the entity and colour tables in sync with the code. |
