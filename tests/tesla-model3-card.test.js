@@ -221,7 +221,63 @@ assert.deepEqual(new Card().getGridOptions(), { columns: 6, rows: 2, min_columns
     assert.equal(got.length, 2);
     assert.equal(got[1].action, "hold");
     assert.deepEqual(got[1].config.hold_action, { action: "navigate", navigation_path: "#tesla" });
-    console.log("ALL OK");
-    process.exit(0);
+    editorTests().then(() => {
+      console.log("ALL OK");
+      process.exit(0);
+    }).catch((err) => { console.error(err); process.exit(1); });
   }, 600);
+}
+
+async function editorTests() {
+  const Editor = w.customElements.get("tesla-model3-card-editor");
+  assert(Editor, "editor registered");
+  assert.equal(Card.getConfigElement().tagName.toLowerCase(), "tesla-model3-card-editor");
+
+  // the minimal config shows every default entity
+  const d0 = Editor.toData({ type: "custom:tesla-model3-card", grid_options: { columns: 6, rows: 2 } });
+  assert.equal(d0.entities.battery, "sensor.calimero_battery_level");
+  assert.equal(d0.entities.lock, "lock.calimero_lock");
+  assert.equal(d0.name, "Tesla");
+  // and unchanged it writes back nothing but what was there
+  const minimal = { type: "custom:tesla-model3-card", grid_options: { columns: 6, rows: 2 } };
+  assert.deepEqual(Editor.toConfig(d0, minimal), minimal);
+
+  // changed entity is written, cleared one becomes null, null shows as empty
+  const d1 = Editor.toData(minimal);
+  d1.entities.battery = "sensor.other_battery";
+  d1.entities.lock = "";
+  const c1 = Editor.toConfig(d1, minimal);
+  assert.deepEqual(c1.entities, { battery: "sensor.other_battery", lock: null });
+  assert.equal(Editor.toData(c1).entities.lock, "");
+  assert.deepEqual(Editor.toConfig(Editor.toData(c1), c1), c1, "round trip");
+
+  // name, image, actions, colours; unknown keys such as wheels kept
+  const full = {
+    type: "custom:tesla-model3-card", name: "Calimero", image: "/local/car.png",
+    wheels: [{ x: 1, y: 2, rx: 3, ry: 4 }], tap_action: { action: "navigate", navigation_path: "#tesla" },
+    colors: { battery: "teal" }, entities: { status: "sensor.s" },
+  };
+  assert.deepEqual(Editor.toConfig(Editor.toData(full), full), full);
+  const d2 = Editor.toData(full);
+  d2.colors.battery = " ";
+  assert.equal(Editor.toConfig(d2, full).colors, undefined, "empty colour dropped");
+
+  // every config the editor writes is accepted by the card
+  new Card().setConfig(c1);
+  new Card().setConfig(Editor.toConfig(Editor.toData(full), full));
+
+  // with a stub ha-form: renders and passes changes on
+  w.customElements.define("ha-form", class extends w.HTMLElement {});
+  const ed = new Editor();
+  const got = [];
+  ed.addEventListener("config-changed", (e) => got.push(e.detail.config));
+  ed.setConfig(minimal);
+  w.document.body.appendChild(ed);
+  await new Promise((r) => setTimeout(r, 0));
+  const form = ed.querySelector("ha-form");
+  assert(form, "ha-form rendered");
+  assert.equal(form.data.entities.range, "sensor.calimero_battery_range");
+  assert.equal(form.computeLabel({ name: "driving" }), "Someone in the car (driving)");
+  form.dispatchEvent(new w.CustomEvent("value-changed", { detail: { value: { ...form.data, name: "Model 3" } } }));
+  assert.deepEqual(got[0], { ...minimal, name: "Model 3" });
 }

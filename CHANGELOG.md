@@ -6,6 +6,7 @@
 * **Driving animation:** while someone is in the car the wheels now spin and the body bobs a little on its suspension, instead of the car driving off and coming back. The car stays in place, so it never leaves the card.
 
 ### Added
+* **Visual editor:** name, picture, every entity (with the defaults shown), tap and hold actions and colours. Clearing an entity switches that part off; only values that differ from the defaults are written to the YAML, and options the editor does not show are kept.
 * `wheels`: the wheel positions in the picture, in % of its width and height. Defaults fit `teslam3.png`; another picture gets no spinning wheels until you set them, and `wheels: []` switches them off.
 
 ## v0.1.0

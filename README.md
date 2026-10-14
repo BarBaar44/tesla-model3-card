@@ -30,6 +30,8 @@ grid_options:
 
 `grid_options` are the card's own default, so they may be left out. Everything else is optional too; a full example is in [tesla.yaml](tesla.yaml).
 
+Or use the card editor: it shows every entity in use, your defaults included, under **Entities**, plus the name, picture, tap and hold actions and colours. Clearing an entity there switches that part off. Options the editor does not show, such as `wheels`, are kept.
+
 ### Options
 
 | Option        | Default                                |

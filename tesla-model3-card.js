@@ -141,6 +141,10 @@ class TeslaModel3Card extends HTMLElement {
     this._ids = [];
   }
 
+  static getConfigElement() {
+    return document.createElement("tesla-model3-card-editor");
+  }
+
   static getStubConfig() {
     return {};
   }
@@ -441,8 +445,180 @@ class TeslaModel3Card extends HTMLElement {
   }
 }
 
+/* ------------------------------------------------------------------------ */
+/* Visual editor                                                            */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Built on HA's own <ha-form>. Every entity field shows the entity in use,
+ * defaults included; clearing a field switches that part off (null). Only
+ * values that differ from the defaults are written to the YAML. Options the
+ * editor does not show (wheels, grid_options, ...) are kept.
+ */
+
+const TESLA_ENTITY_FIELDS = [
+  ["status", "Status text", ["sensor"]],
+  ["battery", "Battery level", ["sensor"]],
+  ["range", "Range", ["sensor"]],
+  ["charge_limit", "Charge limit", ["number", "sensor"]],
+  ["charging", "Charging state", ["sensor", "binary_sensor"]],
+  ["driving", "Someone in the car (driving)", ["binary_sensor", "input_boolean"]],
+  ["lock", "Lock", ["lock"]],
+  ["badge_icon", "Badge icon", ["sensor"]],
+  ["badge_color", "Badge colour", ["sensor"]],
+  ["more_info", "Tap and hold target", null],
+];
+
+const TESLA_EDITOR_SCHEMA = [
+  {
+    type: "grid",
+    name: "",
+    schema: [
+      { name: "name", selector: { text: {} } },
+      { name: "image", selector: { text: {} } },
+    ],
+  },
+  {
+    type: "expandable",
+    name: "entities",
+    title: "Entities",
+    icon: "mdi:car-electric",
+    expanded: true,
+    schema: TESLA_ENTITY_FIELDS.map(([role, , domains]) => ({
+      name: role,
+      selector: { entity: domains ? { filter: { domain: domains } } : {} },
+    })),
+  },
+  {
+    type: "expandable",
+    name: "",
+    title: "Actions",
+    icon: "mdi:gesture-tap",
+    schema: [
+      { name: "tap_action", selector: { ui_action: {} } },
+      { name: "hold_action", selector: { ui_action: {} } },
+    ],
+  },
+  {
+    type: "expandable",
+    name: "colors",
+    title: "Colours",
+    icon: "mdi:palette",
+    schema: [{
+      type: "grid",
+      name: "",
+      schema: Object.keys(TESLA_COLORS).map((k) => ({ name: k, selector: { text: {} } })),
+    }],
+  },
+];
+
+const TESLA_EDITOR_LABELS = {
+  name: "Name",
+  image: "Picture URL",
+  tap_action: "Tap action",
+  hold_action: "Hold action",
+  battery_medium: "battery below 50%",
+  battery_low: "battery below 20%",
+  limit: "charge limit tick",
+  ...Object.fromEntries(TESLA_ENTITY_FIELDS.map(([role, label]) => [role, label])),
+};
+
+class TeslaModel3CardEditor extends HTMLElement {
+  /* config -> form data: defaults filled in, null shown as empty. */
+  static toData(config) {
+    const ent = config.entities || {};
+    const entities = {};
+    for (const role of Object.keys(TESLA_DEFAULTS.entities)) {
+      const v = role in ent ? ent[role] : TESLA_DEFAULTS.entities[role];
+      entities[role] = v || "";
+    }
+    return {
+      name: config.name == null ? TESLA_DEFAULTS.name : config.name,
+      image: config.image == null ? TESLA_DEFAULTS.image : config.image,
+      entities,
+      tap_action: config.tap_action,
+      hold_action: config.hold_action,
+      colors: { ...(config.colors || {}) },
+    };
+  }
+
+  /* form data -> config: only what differs from the defaults; cleared entity -> null. */
+  static toConfig(data, previous) {
+    const config = { type: "custom:tesla-model3-card" };
+    const handled = ["type", "name", "image", "entities", "tap_action", "hold_action", "colors"];
+    for (const [k, v] of Object.entries(previous || {})) {
+      if (!handled.includes(k)) config[k] = v;
+    }
+    if (data.name != null && data.name !== TESLA_DEFAULTS.name) config.name = data.name;
+    if (data.image && data.image !== TESLA_DEFAULTS.image) config.image = data.image;
+    const entities = {};
+    for (const [role, def] of Object.entries(TESLA_DEFAULTS.entities)) {
+      const v = (data.entities || {})[role];
+      if (!v) entities[role] = null;
+      else if (v !== def) entities[role] = v;
+    }
+    if (Object.keys(entities).length) config.entities = entities;
+    if (data.tap_action && Object.keys(data.tap_action).length) config.tap_action = data.tap_action;
+    if (data.hold_action && Object.keys(data.hold_action).length) config.hold_action = data.hold_action;
+    const colors = {};
+    for (const [k, v] of Object.entries(data.colors || {})) {
+      if (typeof v === "string" && v.trim()) colors[k] = v.trim();
+    }
+    if (Object.keys(colors).length) config.colors = colors;
+    return config;
+  }
+
+  setConfig(config) {
+    this._config = config;
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  connectedCallback() {
+    this._loadForm().then(() => this._render());
+  }
+
+  /* ha-form is lazy loaded by HA; load it through a built-in card's editor. */
+  async _loadForm() {
+    if (customElements.get("ha-form")) return;
+    try {
+      const helpers = await window.loadCardHelpers();
+      const card = await helpers.createCardElement({ type: "entities", entities: [] });
+      if (card.constructor.getConfigElement) await card.constructor.getConfigElement();
+    } catch (_) {
+      /* rendered as soon as HA has loaded it */
+    }
+    await customElements.whenDefined("ha-form");
+  }
+
+  _render() {
+    if (!this._config || !customElements.get("ha-form")) return;
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.schema = TESLA_EDITOR_SCHEMA;
+      this._form.computeLabel = (s) => TESLA_EDITOR_LABELS[s.name] || s.name.replace(/_/g, " ");
+      this._form.addEventListener("value-changed", (e) => {
+        e.stopPropagation();
+        const config = TeslaModel3CardEditor.toConfig(e.detail.value, this._config);
+        this._config = config;
+        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
+      });
+      this.appendChild(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.data = TeslaModel3CardEditor.toData(this._config);
+  }
+}
+
 if (!customElements.get("tesla-model3-card")) {
   customElements.define("tesla-model3-card", TeslaModel3Card);
+}
+if (!customElements.get("tesla-model3-card-editor")) {
+  customElements.define("tesla-model3-card-editor", TeslaModel3CardEditor);
 }
 
 window.customCards = window.customCards || [];
