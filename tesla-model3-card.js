@@ -11,7 +11,7 @@
  * https://github.com/BarBaar44/tesla-model3-card  (MIT)
  */
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const HOLD_MS = 500;
 const MOVE_TOLERANCE_PX = 10;

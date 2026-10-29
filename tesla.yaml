@@ -24,6 +24,8 @@ tap_action:
 hold_action:
   action: more-info
 colors:
+  car: ultra_red
+  rims: black
   battery: var(--green-color)
 grid_options:
   columns: 6
