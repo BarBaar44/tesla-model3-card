@@ -67,7 +67,7 @@ A misspelled option or entity role shows an error card instead of being ignored.
 
 ### Colors
 
-Each key takes any CSS color (`"#ff9800"`, `orange`, `var(--orange-color)`).
+Each key takes any CSS color (`"#ff9800"`, `orange`, `var(--orange-color)`) or `[r, g, b]`. The card editor has a colour picker per key; it writes hex, and leaves a name or `var()` you set in YAML alone until you pick another colour. Picking the default colour removes the key.
 
 | Key              | Used for                      | Default                      |
 | ---------------- | ----------------------------- | ---------------------------- |

@@ -60,6 +60,21 @@ const TESLA_REMOVED_ROLES = ["badge_icon", "badge_color"];
 const TESLA_BAD = ["unknown", "unavailable", "none", ""];
 const teslaNum = (v) => (v === undefined || v === null || v === "" || isNaN(Number(v)) ? null : Number(v));
 
+/* Colours: "#rrggbb" <-> [r, g, b] for HA's colour picker. */
+const teslaHexToRgb = (v) => {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(v == null ? "" : v).trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1];
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+};
+const teslaRgbToHex = (rgb) => "#" + rgb.map((n) => Math.max(0, Math.min(255, Math.round(+n) || 0)).toString(16).padStart(2, "0")).join("");
+const teslaIsRgb = (v) => Array.isArray(v) && v.length === 3 && v.every((n) => teslaNum(n) !== null);
+/* Fallback hex of each default, e.g. var(--green-color, #4caf50) -> [76, 175, 80]. */
+const teslaDefaultRgb = (k) => teslaHexToRgb((/#[0-9a-f]{3,6}/i.exec(TESLA_COLORS[k][1]) || [""])[0]);
+/* What the picker shows for a configured value: hex and [r, g, b] as is, anything else (a name, a var()) as the default. */
+const teslaPickerRgb = (k, v) => (teslaIsRgb(v) ? v.map(Number) : teslaHexToRgb(v) || teslaDefaultRgb(k));
+const teslaSameRgb = (a, b) => teslaIsRgb(a) && teslaIsRgb(b) && a.every((n, i) => Math.round(+n) === Math.round(+b[i]));
+
 const TESLA_STYLE = `
   :host {
 ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
@@ -218,7 +233,8 @@ class TeslaModel3Card extends HTMLElement {
       if (!TESLA_COLORS[k]) console.warn(`tesla-model3-card: unknown colors key "${k}". Known: ${Object.keys(TESLA_COLORS).join(", ")}`);
     });
     Object.entries(TESLA_COLORS).forEach(([k, [v]]) => {
-      const val = typeof colors[k] === "string" && colors[k].trim() ? colors[k].trim() : null;
+      const c = colors[k];
+      const val = teslaIsRgb(c) ? teslaRgbToHex(c) : typeof c === "string" && c.trim() ? c.trim() : null;
       if (val) this.style.setProperty(v, val);
       else this.style.removeProperty(v);
     });
@@ -542,7 +558,7 @@ const TESLA_EDITOR_SCHEMA = [
     schema: [{
       type: "grid",
       name: "",
-      schema: Object.keys(TESLA_COLORS).map((k) => ({ name: k, selector: { text: {} } })),
+      schema: Object.keys(TESLA_COLORS).map((k) => ({ name: k, selector: { color_rgb: {} } })),
     }],
   },
 ];
@@ -576,7 +592,7 @@ class TeslaModel3CardEditor extends HTMLElement {
       entities,
       tap_action: config.tap_action,
       hold_action: config.hold_action,
-      colors: { ...(config.colors || {}) },
+      colors: Object.fromEntries(Object.keys(TESLA_COLORS).map((k) => [k, teslaPickerRgb(k, (config.colors || {})[k])])),
     };
   }
 
@@ -598,9 +614,19 @@ class TeslaModel3CardEditor extends HTMLElement {
     if (Object.keys(entities).length) config.entities = entities;
     if (data.tap_action && Object.keys(data.tap_action).length) config.tap_action = data.tap_action;
     if (data.hold_action && Object.keys(data.hold_action).length) config.hold_action = data.hold_action;
+    /* An untouched picker keeps what the YAML had (a name or var() included); a picked colour is
+       written as hex, unless it is the default; keys the editor does not know are kept. */
+    const prev = (previous && previous.colors) || {};
     const colors = {};
-    for (const [k, v] of Object.entries(data.colors || {})) {
-      if (typeof v === "string" && v.trim()) colors[k] = v.trim();
+    for (const [k, v] of Object.entries(prev)) if (!TESLA_COLORS[k]) colors[k] = v;
+    for (const k of Object.keys(TESLA_COLORS)) {
+      const v = (data.colors || {})[k];
+      const had = prev[k];
+      if (teslaIsRgb(v)) {
+        if (teslaSameRgb(v, teslaPickerRgb(k, had))) {
+          if (had != null && had !== "") colors[k] = had;
+        } else if (!teslaSameRgb(v, teslaDefaultRgb(k))) colors[k] = teslaRgbToHex(v);
+      } else if (typeof v === "string" && v.trim()) colors[k] = v.trim();
     }
     if (Object.keys(colors).length) config.colors = colors;
     return config;

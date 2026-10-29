@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+* **Colour pickers** in the visual editor instead of text fields. A picked colour is written as hex; a colour name or `var()` set in YAML is kept until another colour is picked; picking the default removes the key. `colors` also accepts `[r, g, b]`.
+
 ## v0.3.0
 
 ### Added

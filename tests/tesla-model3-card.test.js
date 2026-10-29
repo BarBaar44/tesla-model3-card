@@ -291,9 +291,25 @@ async function editorTests() {
     colors: { battery: "teal" }, entities: { status: "sensor.s" },
   };
   assert.deepEqual(Editor.toConfig(Editor.toData(full), full), full);
+
+  // colour pickers: [r, g, b] in the form, hex in the YAML
   const d2 = Editor.toData(full);
-  d2.colors.battery = " ";
-  assert.equal(Editor.toConfig(d2, full).colors, undefined, "empty colour dropped");
+  assert.deepEqual(d2.colors.battery, [76, 175, 80], "a name shows the default in the picker");
+  assert.deepEqual(d2.colors.unlocked, [244, 67, 54], "unset shows the default");
+  d2.colors.battery = [0, 128, 255];
+  assert.deepEqual(Editor.toConfig(d2, full).colors, { battery: "#0080ff" }, "picked colour as hex");
+  d2.colors.update = [33, 150, 243];
+  assert.equal(Editor.toConfig(d2, full).colors.update, undefined, "default not written");
+  const hexed = { type: "custom:tesla-model3-card", colors: { locked: "#abc", sentry_on: [1, 2, 3], nope: "red" } };
+  const d3 = Editor.toData(hexed);
+  assert.deepEqual(d3.colors.locked, [170, 187, 204]);
+  assert.deepEqual(Editor.toConfig(d3, hexed).colors, hexed.colors, "untouched kept as written, unknown keys kept");
+  d3.colors.locked = [76, 175, 80];
+  assert.equal(Editor.toConfig(d3, hexed).colors.locked, "#4caf50");
+  d3.colors.locked = [155, 155, 155];
+  assert.equal(Editor.toConfig(d3, hexed).colors.locked, undefined, "back to the default removes it");
+  const rgbCard = render(base(), { colors: { sentry_on: [1, 2, 3] } });
+  assert.equal(rgbCard.style.getPropertyValue("--tc-sentry-on"), "#010203", "[r, g, b] in YAML works");
 
   // a 0.2 config with the badge sensors loses them on the next save
   const old = { type: "custom:tesla-model3-card", entities: { badge_icon: "sensor.tesla_badge_icon", battery: "sensor.b" } };
