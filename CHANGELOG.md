@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0
 
 ### Added
 * **Car paint:** `colors.car` paints the car in a Model 3 colour (Pearl White, Quicksilver, Stealth Grey, Black, Ultra Red, Marine Blue, Deep Blue, Frost Blue, and older Silver, Midnight Silver, Red Multi-Coat) or any colour, lit a little from above. A list in the editor. Unset leaves the picture as drawn; the rims and tyres stay as they are.
