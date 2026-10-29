@@ -72,7 +72,12 @@ const TESLA_PAINTS = {
   deep_blue: ["Deep Blue Metallic", "#203f7c"],
   frost_blue: ["Frost Blue", "#a9c4d8"],
 };
-const TESLA_COLOR_KEYS = ["car", ...Object.keys(TESLA_COLORS)];
+/* Rims (colors.rims): multiplied over the drawn rims, so the white spokes take the colour and the gaps stay black. */
+const TESLA_RIMS = {
+  black: ["Black", "#3d4045"],
+  graphite: ["Graphite", "#74787e"],
+};
+const TESLA_COLOR_KEYS = ["car", "rims", ...Object.keys(TESLA_COLORS)];
 
 /* Entity roles of 0.1 and 0.2 that 0.3 no longer uses: ignored with a warning, not an error. */
 const TESLA_REMOVED_ROLES = ["badge_icon", "badge_color"];
@@ -131,7 +136,10 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
 
   /* Spinning wheels: a round crop of each wheel, squashed back into its oval. Only while driving. */
   .wheel { display: none; position: absolute; aspect-ratio: 1; }
-  .driving .wheel { display: block; }
+  .driving .wheel, .rims .wheel { display: block; }
+  /* Rim colour: multiplied over the crop, so it turns with the wheel and matches at rest. */
+  .wheel .tint { display: none; position: absolute; inset: 0; background: var(--tc-rims); mix-blend-mode: multiply; }
+  .rims .wheel .tint { display: block; }
   .wheel .spin { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
   .wheel .spin img { position: absolute; display: block; max-width: none; }
   .driving .wheel .spin { animation: tc-spin .5s linear infinite; }
@@ -186,7 +194,6 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
 
   @media (prefers-reduced-motion: reduce) {
     .driving .carbox, .driving .wheel .spin, .charging .fill { animation: none; }
-    .driving .wheel { display: none; }
     .fill { transition: none; }
   }
 `;
@@ -354,6 +361,7 @@ class TeslaModel3Card extends HTMLElement {
     box.querySelectorAll(".wheel").forEach((el) => el.remove());
     this._maskPaint();
     this._paint();
+    this._rims();
     for (const wh of this._config.wheels) {
       const x = wh.x / 100, y = wh.y / 100, rx = wh.rx / 100, ry = wh.ry / 100;
       if (rx <= 0 || ry <= 0) continue;
@@ -378,6 +386,9 @@ class TeslaModel3Card extends HTMLElement {
       const spin = document.createElement("div");
       spin.className = "spin";
       spin.appendChild(pic);
+      const tint = document.createElement("div");
+      tint.className = "tint";
+      spin.appendChild(tint);
       el.appendChild(spin);
       box.appendChild(el);
     }
@@ -419,6 +430,16 @@ class TeslaModel3Card extends HTMLElement {
     }
     const mix = (c, t, f) => teslaRgbToHex(c.map((v, i) => v + (t[i] - v) * f));
     el.style.background = `linear-gradient(to bottom, ${mix(rgb, [255, 255, 255], 0.2)} 8%, ${mix(rgb, rgb, 0)} 55%, ${mix(rgb, [0, 0, 0], 0.22)} 100%)`;
+  }
+
+  /* Rims: a rims preset or any colour; shown on the wheel crops, also when parked. */
+  _rims() {
+    const want = this._config.colors.rims;
+    const key = typeof want === "string" ? want.trim().toLowerCase() : "";
+    const val = TESLA_RIMS[key] ? TESLA_RIMS[key][1] : teslaIsRgb(want) ? teslaRgbToHex(want) : key ? want.trim() : "";
+    this._el.card.classList.toggle("rims", !!val);
+    if (val) this._el.card.style.setProperty("--tc-rims", val);
+    else this._el.card.style.removeProperty("--tc-rims");
   }
 
   /* ---- actions ------------------------------------------------------------ */
@@ -639,6 +660,16 @@ const TESLA_EDITOR_SCHEMA = [
         },
       },
       {
+        name: "rims",
+        selector: {
+          select: {
+            mode: "dropdown",
+            custom_value: true,
+            options: Object.entries(TESLA_RIMS).map(([value, [label]]) => ({ value, label })),
+          },
+        },
+      },
+      {
         type: "grid",
         name: "",
         schema: Object.keys(TESLA_COLORS).map((k) => ({ name: k, selector: { color_rgb: {} } })),
@@ -656,6 +687,7 @@ const TESLA_EDITOR_LABELS = {
   battery_low: "battery below 20%",
   limit: "charge limit tick",
   car: "Car paint (Model 3 colour, or any colour)",
+  rims: "Rims (empty: as drawn)",
   sentry_on: "sentry on",
   sentry_off: "sentry off",
   update: "Software update",
@@ -678,7 +710,10 @@ class TeslaModel3CardEditor extends HTMLElement {
       tap_action: config.tap_action,
       hold_action: config.hold_action,
       colors: {
-        car: (() => { const v = (config.colors || {}).car; return teslaIsRgb(v) ? teslaRgbToHex(v) : v == null ? "" : String(v); })(),
+        ...Object.fromEntries(["car", "rims"].map((k) => {
+          const v = (config.colors || {})[k];
+          return [k, teslaIsRgb(v) ? teslaRgbToHex(v) : v == null ? "" : String(v)];
+        })),
         ...Object.fromEntries(Object.keys(TESLA_COLORS).map((k) => [k, teslaPickerRgb(k, (config.colors || {})[k])])),
       },
     };
@@ -707,8 +742,10 @@ class TeslaModel3CardEditor extends HTMLElement {
     const prev = (previous && previous.colors) || {};
     const colors = {};
     for (const [k, v] of Object.entries(prev)) if (!TESLA_COLOR_KEYS.includes(k)) colors[k] = v;
-    const car = (data.colors || {}).car;
-    if (typeof car === "string" && car.trim()) colors.car = car.trim();
+    for (const k of ["car", "rims"]) {
+      const v = (data.colors || {})[k];
+      if (typeof v === "string" && v.trim()) colors[k] = v.trim();
+    }
     for (const k of Object.keys(TESLA_COLORS)) {
       const v = (data.colors || {})[k];
       const had = prev[k];

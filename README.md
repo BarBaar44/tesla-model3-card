@@ -71,9 +71,12 @@ Each key takes any CSS color (`"#ff9800"`, `orange`, `var(--orange-color)`) or `
 
 `car` takes a Model 3 paint or any colour: `pearl_white`, `quicksilver`, `silver`, `midnight_silver`, `stealth_grey`, `black`, `ultra_red`, `red_multi_coat`, `marine_blue`, `deep_blue`, `frost_blue`. The editor offers them in a list. The paint is multiplied over the picture with a little light from above: white parts take the colour, black lines and windows stay black, the wheels keep their rims. It suits the default line drawing; on a photo it only darkens. `black` is shown as a dark grey, otherwise the lines would disappear.
 
+`rims` darkens the drawn rims the same way: the spokes take the colour, the gaps stay black, and the colour turns with the wheels. It needs `wheels` (the default picture has them).
+
 | Key              | Used for                      | Default                      |
 | ---------------- | ----------------------------- | ---------------------------- |
 | `car`            | paint of the car (see below)  | none (as drawn)              |
+| `rims`           | rims: `black`, `graphite` or any colour | none (as drawn)    |
 | `battery`        | bar at 50% and above          | `var(--green-color)`         |
 | `battery_medium` | bar below 50%                 | `var(--amber-color)`         |
 | `battery_low`    | bar below 20%                 | `var(--red-color)`           |

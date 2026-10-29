@@ -326,6 +326,14 @@ async function editorTests() {
   assert.equal(paint("var(--my-car)").mul, "var(--my-car)", "CSS colour passed through");
   const noWheels = render(base(), { image: "/local/other.png", colors: { car: "red" } }).shadowRoot.querySelector(".paint").style;
   assert.ok(!noWheels.getPropertyValue("mask-image").includes("radial-gradient"));
+  // rims: preset or colour, the wheel crops show (also parked) with a multiplied tint
+  const rimsCard = render(base(), { colors: { rims: "black" } }).shadowRoot.querySelector("ha-card");
+  assert.ok(rimsCard.classList.contains("rims") && rimsCard.style.getPropertyValue("--tc-rims") === "#3d4045");
+  assert.equal(rimsCard.querySelectorAll(".wheel .tint").length, 2);
+  assert.equal(render(base(), { colors: { rims: "#123" } }).shadowRoot.querySelector("ha-card").style.getPropertyValue("--tc-rims"), "#123");
+  assert.ok(!render(base()).shadowRoot.querySelector("ha-card").classList.contains("rims"), "unset: as drawn");
+  const rimCfg = { type: "custom:tesla-model3-card", colors: { car: "black", rims: "black" } };
+  assert.deepEqual(Editor.toConfig(Editor.toData(rimCfg), rimCfg), rimCfg, "rims round trip");
   const carCfg = { type: "custom:tesla-model3-card", colors: { car: "stealth_grey" } };
   assert.deepEqual(Editor.toConfig(Editor.toData(carCfg), carCfg), carCfg, "car round trip");
   const dc = Editor.toData(carCfg); dc.colors.car = "";

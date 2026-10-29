@@ -4,6 +4,7 @@
 
 ### Added
 * **Car paint:** `colors.car` paints the car in a Model 3 colour (Pearl White, Quicksilver, Stealth Grey, Black, Ultra Red, Marine Blue, Deep Blue, Frost Blue, and older Silver, Midnight Silver, Red Multi-Coat) or any colour, lit a little from above. A list in the editor. Unset leaves the picture as drawn; the rims and tyres stay as they are.
+* **Rim colour:** `colors.rims` (`black`, `graphite` or any colour) for black wheels; a list in the editor. Turns with the wheels while driving.
 
 ### Changed
 * **Colour pickers** in the visual editor instead of text fields. A picked colour is written as hex; a colour name or `var()` set in YAML is kept until another colour is picked; picking the default removes the key. `colors` also accepts `[r, g, b]`.
