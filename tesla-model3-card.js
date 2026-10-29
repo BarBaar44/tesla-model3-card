@@ -42,7 +42,6 @@ const TESLA_DEFAULTS = {
 
 /* colors key -> CSS variable and default. */
 const TESLA_COLORS = {
-  car: ["--tc-car", "#ffffff"],
   battery: ["--tc-battery", "var(--green-color, #4caf50)"],
   battery_medium: ["--tc-battery-medium", "var(--amber-color, #ffc107)"],
   battery_low: ["--tc-battery-low", "var(--red-color, #f44336)"],
@@ -54,6 +53,26 @@ const TESLA_COLORS = {
   sentry_off: ["--tc-sentry-off", "var(--secondary-text-color, #9b9b9b)"],
   update: ["--tc-update", "var(--blue-color, #2196f3)"],
 };
+
+/*
+ * Car paint (colors.car): a Model 3 paint name or any colour. The values are how the
+ * paint reads on screen, not the factory codes. White leaves the picture as drawn.
+ * Black is a dark grey: the drawing's lines are black and would disappear.
+ */
+const TESLA_PAINTS = {
+  pearl_white: ["Pearl White", "#f4f4f1"],
+  quicksilver: ["Quicksilver", "#b9bdc0"],
+  silver: ["Silver Metallic (older)", "#a7abaf"],
+  midnight_silver: ["Midnight Silver (older)", "#5d6168"],
+  stealth_grey: ["Stealth Grey", "#45484d"],
+  black: ["Diamond Black / Solid Black", "#2a2c30"],
+  ultra_red: ["Ultra Red", "#b5121b"],
+  red_multi_coat: ["Red Multi-Coat (older)", "#9e1620"],
+  marine_blue: ["Marine Blue", "#1d4a78"],
+  deep_blue: ["Deep Blue Metallic", "#203f7c"],
+  frost_blue: ["Frost Blue", "#a9c4d8"],
+};
+const TESLA_COLOR_KEYS = ["car", ...Object.keys(TESLA_COLORS)];
 
 /* Entity roles of 0.1 and 0.2 that 0.3 no longer uses: ignored with a warning, not an error. */
 const TESLA_REMOVED_ROLES = ["badge_icon", "badge_color"];
@@ -74,6 +93,12 @@ const teslaIsRgb = (v) => Array.isArray(v) && v.length === 3 && v.every((n) => t
 const teslaDefaultRgb = (k) => teslaHexToRgb((/#[0-9a-f]{3,6}/i.exec(TESLA_COLORS[k][1]) || [""])[0]);
 /* What the picker shows for a configured value: hex and [r, g, b] as is, anything else (a name, a var()) as the default. */
 const teslaPickerRgb = (k, v) => (teslaIsRgb(v) ? v.map(Number) : teslaHexToRgb(v) || teslaDefaultRgb(k));
+/* colors.car -> [r, g, b], or null for a CSS colour that only the browser can resolve (or white / unset). */
+const teslaPaintRgb = (v) => {
+  const key = typeof v === "string" ? v.trim().toLowerCase().replace(/[\s-]+/g, "_") : "";
+  const rgb = TESLA_PAINTS[key] ? teslaHexToRgb(TESLA_PAINTS[key][1]) : teslaIsRgb(v) ? v.map(Number) : teslaHexToRgb(v);
+  return rgb && rgb.some((n) => n < 255) ? rgb : null;
+};
 const teslaSameRgb = (a, b) => teslaIsRgb(a) && teslaIsRgb(b) && a.every((n, i) => Math.round(+n) === Math.round(+b[i]));
 
 const TESLA_STYLE = `
@@ -99,8 +124,9 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .carbox > img { display: block; width: 100%; height: 100%; }
   /* Paint: the colour multiplied over the picture, masked to the car, minus the wheels.
      White parts take the colour, black lines and windows stay black. White = no change. */
-  .paint { position: absolute; inset: 0; pointer-events: none; background: var(--tc-car); mix-blend-mode: multiply;
+  .paint { display: none; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply;
     -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+  .paint.on { display: block; }
   .carbox.missing { visibility: hidden; }
 
   /* Spinning wheels: a round crop of each wheel, squashed back into its oval. Only while driving. */
@@ -236,7 +262,7 @@ class TeslaModel3Card extends HTMLElement {
 
   _applyColors(colors) {
     Object.keys(colors).forEach((k) => {
-      if (!TESLA_COLORS[k]) console.warn(`tesla-model3-card: unknown colors key "${k}". Known: ${Object.keys(TESLA_COLORS).join(", ")}`);
+      if (!TESLA_COLOR_KEYS.includes(k)) console.warn(`tesla-model3-card: unknown colors key "${k}". Known: ${TESLA_COLOR_KEYS.join(", ")}`);
     });
     Object.entries(TESLA_COLORS).forEach(([k, [v]]) => {
       const c = colors[k];
@@ -327,6 +353,7 @@ class TeslaModel3Card extends HTMLElement {
     box.style.setProperty("--tc-ar", String(ar));
     box.querySelectorAll(".wheel").forEach((el) => el.remove());
     this._maskPaint();
+    this._paint();
     for (const wh of this._config.wheels) {
       const x = wh.x / 100, y = wh.y / 100, rx = wh.rx / 100, ry = wh.ry / 100;
       if (rx <= 0 || ry <= 0) continue;
@@ -356,18 +383,42 @@ class TeslaModel3Card extends HTMLElement {
     }
   }
 
-  /* The paint covers the car's own pixels, except the wheels (they keep their rims). */
+  /* The paint covers the car's own pixels, except the wheels and the bottom of the tyres. */
   _maskPaint() {
     const url = `url("${String(this._config.image).replace(/["\\]/g, "\\$&")}")`;
     const holes = this._config.wheels.filter((wh) => wh.rx > 0 && wh.ry > 0)
-      .map((wh) => `radial-gradient(ellipse ${wh.rx}% ${wh.ry}% at ${wh.x}% ${wh.y}%, #000 98%, transparent 100%)`);
-    const st = this._el.paint.style;
+      .flatMap((wh) => [
+        `radial-gradient(ellipse ${wh.rx}% ${wh.ry}% at ${wh.x}% ${wh.y}%, #000 98%, transparent 100%)`,
+        // and the lower half of the tyre, so no paint shows under the wheel
+        `radial-gradient(ellipse ${wh.rx * 0.95}% ${wh.ry}% at ${wh.x}% ${wh.y + wh.ry * 0.5}%, #000 98%, transparent 100%)`,
+      ]);
     const layers = [url, ...holes].join(", ");
+    const st = this._el.paint.style;
     st.setProperty("-webkit-mask-image", layers);
     st.setProperty("mask-image", layers);
     // Picture minus the union of the wheels (the first layer is the top one).
-    st.setProperty("-webkit-mask-composite", holes.length ? "source-out, source-over" : "source-over");
-    st.setProperty("mask-composite", holes.length ? "subtract, add" : "add");
+    // One operator per layer: the list would repeat otherwise.
+    const ops = (cut, add) => [holes.length ? cut : add, ...holes.map(() => add)].join(", ");
+    st.setProperty("-webkit-mask-composite", ops("source-out", "source-over"));
+    st.setProperty("mask-composite", ops("subtract", "add"));
+  }
+
+  /*
+   * Paints the white of the drawing in colors.car, lit a little from above. The paint
+   * is multiplied over the picture: white -> paint, the black lines and windows stay black.
+   */
+  _paint() {
+    const el = this._el.paint;
+    const want = this._config.colors.car;
+    const rgb = teslaPaintRgb(want);
+    const css = typeof want === "string" ? want.trim() : "";
+    el.classList.toggle("on", !!rgb || !!css);
+    if (!rgb) {
+      el.style.background = css;
+      return;
+    }
+    const mix = (c, t, f) => teslaRgbToHex(c.map((v, i) => v + (t[i] - v) * f));
+    el.style.background = `linear-gradient(to bottom, ${mix(rgb, [255, 255, 255], 0.2)} 8%, ${mix(rgb, rgb, 0)} 55%, ${mix(rgb, [0, 0, 0], 0.22)} 100%)`;
   }
 
   /* ---- actions ------------------------------------------------------------ */
@@ -576,11 +627,23 @@ const TESLA_EDITOR_SCHEMA = [
     name: "colors",
     title: "Colours",
     icon: "mdi:palette",
-    schema: [{
-      type: "grid",
-      name: "",
-      schema: Object.keys(TESLA_COLORS).map((k) => ({ name: k, selector: { color_rgb: {} } })),
-    }],
+    schema: [
+      {
+        name: "car",
+        selector: {
+          select: {
+            mode: "dropdown",
+            custom_value: true,
+            options: Object.entries(TESLA_PAINTS).map(([value, [label]]) => ({ value, label })),
+          },
+        },
+      },
+      {
+        type: "grid",
+        name: "",
+        schema: Object.keys(TESLA_COLORS).map((k) => ({ name: k, selector: { color_rgb: {} } })),
+      },
+    ],
   },
 ];
 
@@ -592,6 +655,7 @@ const TESLA_EDITOR_LABELS = {
   battery_medium: "battery below 50%",
   battery_low: "battery below 20%",
   limit: "charge limit tick",
+  car: "Car paint (Model 3 colour, or any colour)",
   sentry_on: "sentry on",
   sentry_off: "sentry off",
   update: "Software update",
@@ -613,7 +677,10 @@ class TeslaModel3CardEditor extends HTMLElement {
       entities,
       tap_action: config.tap_action,
       hold_action: config.hold_action,
-      colors: Object.fromEntries(Object.keys(TESLA_COLORS).map((k) => [k, teslaPickerRgb(k, (config.colors || {})[k])])),
+      colors: {
+        car: (() => { const v = (config.colors || {}).car; return teslaIsRgb(v) ? teslaRgbToHex(v) : v == null ? "" : String(v); })(),
+        ...Object.fromEntries(Object.keys(TESLA_COLORS).map((k) => [k, teslaPickerRgb(k, (config.colors || {})[k])])),
+      },
     };
   }
 
@@ -639,7 +706,9 @@ class TeslaModel3CardEditor extends HTMLElement {
        written as hex, unless it is the default; keys the editor does not know are kept. */
     const prev = (previous && previous.colors) || {};
     const colors = {};
-    for (const [k, v] of Object.entries(prev)) if (!TESLA_COLORS[k]) colors[k] = v;
+    for (const [k, v] of Object.entries(prev)) if (!TESLA_COLOR_KEYS.includes(k)) colors[k] = v;
+    const car = (data.colors || {}).car;
+    if (typeof car === "string" && car.trim()) colors.car = car.trim();
     for (const k of Object.keys(TESLA_COLORS)) {
       const v = (data.colors || {})[k];
       const had = prev[k];

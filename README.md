@@ -69,11 +69,11 @@ A misspelled option or entity role shows an error card instead of being ignored.
 
 Each key takes any CSS color (`"#ff9800"`, `orange`, `var(--orange-color)`) or `[r, g, b]`. The card editor has a colour picker per key; it writes hex, and leaves a name or `var()` you set in YAML alone until you pick another colour. Picking the default colour removes the key.
 
-`car` is multiplied over the picture: white parts take the colour, black lines and windows stay black, the wheels keep their rims. It suits the default line drawing; on a photo it only darkens. Very dark colours lose the lines.
+`car` takes a Model 3 paint or any colour: `pearl_white`, `quicksilver`, `silver`, `midnight_silver`, `stealth_grey`, `black`, `ultra_red`, `red_multi_coat`, `marine_blue`, `deep_blue`, `frost_blue`. The editor offers them in a list. The paint is multiplied over the picture with a little light from above: white parts take the colour, black lines and windows stay black, the wheels keep their rims. It suits the default line drawing; on a photo it only darkens. `black` is shown as a dark grey, otherwise the lines would disappear.
 
 | Key              | Used for                      | Default                      |
 | ---------------- | ----------------------------- | ---------------------------- |
-| `car`            | paint of the car (see below)  | `#ffffff` (as drawn)         |
+| `car`            | paint of the car (see below)  | none (as drawn)              |
 | `battery`        | bar at 50% and above          | `var(--green-color)`         |
 | `battery_medium` | bar below 50%                 | `var(--amber-color)`         |
 | `battery_low`    | bar below 20%                 | `var(--red-color)`           |

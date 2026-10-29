@@ -308,14 +308,28 @@ async function editorTests() {
   assert.equal(Editor.toConfig(d3, hexed).colors.locked, "#4caf50");
   d3.colors.locked = [155, 155, 155];
   assert.equal(Editor.toConfig(d3, hexed).colors.locked, undefined, "back to the default removes it");
-  // car paint: default white (no change), picker included, mask = picture minus the wheels
-  assert.deepEqual(Editor.toData({}).colors.car, [255, 255, 255]);
-  const painted = render(base(), { colors: { car: "#c62828" } });
-  assert.equal(painted.style.getPropertyValue("--tc-car"), "#c62828");
-  const mask = painted.shadowRoot.querySelector(".paint").style.getPropertyValue("mask-image");
-  assert.ok(mask.includes("teslam3.png") && (mask.match(/radial-gradient/g) || []).length === 2, mask);
-  const noWheels = render(base(), { image: "/local/other.png" }).shadowRoot.querySelector(".paint").style;
+  // car paint: a Model 3 paint name or any colour; unset leaves the picture as drawn
+  assert.equal(Editor.toData({}).colors.car, "");
+  const paint = (car) => {
+    const r = render(base(), car === undefined ? {} : { colors: { car } }).shadowRoot;
+    const el = r.querySelector(".paint");
+    return { mul: el.classList.contains("on") && el.style.background, mask: el.style.getPropertyValue("mask-image") };
+  };
+  assert.equal(paint().mul, false, "unset: no paint");
+  const red = paint("ultra_red");
+  assert.ok(/linear-gradient/.test(red.mul), "paint shaded from above");
+  assert.ok(red.mask.includes("teslam3.png") && (red.mask.match(/radial-gradient/g) || []).length === 4, red.mask);
+  const redEl = render(base(), { colors: { car: "ultra_red" } }).shadowRoot.querySelector(".paint");
+  assert.equal(redEl.style.getPropertyValue("mask-composite"), "subtract, add, add, add, add", "one operator per layer");
+  assert.equal(paint("Ultra Red").mul, red.mul, "label-ish spelling works");
+  assert.ok(/linear-gradient/.test(paint("#123456").mul), "hex works");
+  assert.equal(paint("var(--my-car)").mul, "var(--my-car)", "CSS colour passed through");
+  const noWheels = render(base(), { image: "/local/other.png", colors: { car: "red" } }).shadowRoot.querySelector(".paint").style;
   assert.ok(!noWheels.getPropertyValue("mask-image").includes("radial-gradient"));
+  const carCfg = { type: "custom:tesla-model3-card", colors: { car: "stealth_grey" } };
+  assert.deepEqual(Editor.toConfig(Editor.toData(carCfg), carCfg), carCfg, "car round trip");
+  const dc = Editor.toData(carCfg); dc.colors.car = "";
+  assert.equal(Editor.toConfig(dc, carCfg).colors, undefined, "cleared car removed");
   const rgbCard = render(base(), { colors: { sentry_on: [1, 2, 3] } });
   assert.equal(rgbCard.style.getPropertyValue("--tc-sentry-on"), "#010203", "[r, g, b] in YAML works");
 
