@@ -42,6 +42,7 @@ const TESLA_DEFAULTS = {
 
 /* colors key -> CSS variable and default. */
 const TESLA_COLORS = {
+  car: ["--tc-car", "#ffffff"],
   battery: ["--tc-battery", "var(--green-color, #4caf50)"],
   battery_medium: ["--tc-battery-medium", "var(--amber-color, #ffc107)"],
   battery_low: ["--tc-battery-low", "var(--red-color, #f44336)"],
@@ -94,7 +95,12 @@ ${Object.values(TESLA_COLORS).map(([v, d]) => `    ${v}: ${d};`).join("\n")}
   .car { min-height: 0; overflow: hidden; display: flex; justify-content: center; align-items: flex-end; container-type: size; }
   .carbox { position: relative; flex: none; aspect-ratio: var(--tc-ar, 2.483);
     width: min(100cqw, calc(100cqh * var(--tc-ar, 2.483))); }
+  .carbox { isolation: isolate; }
   .carbox > img { display: block; width: 100%; height: 100%; }
+  /* Paint: the colour multiplied over the picture, masked to the car, minus the wheels.
+     White parts take the colour, black lines and windows stay black. White = no change. */
+  .paint { position: absolute; inset: 0; pointer-events: none; background: var(--tc-car); mix-blend-mode: multiply;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
   .carbox.missing { visibility: hidden; }
 
   /* Spinning wheels: a round crop of each wheel, squashed back into its oval. Only while driving. */
@@ -273,7 +279,7 @@ class TeslaModel3Card extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${TESLA_STYLE}</style>
       <ha-card role="button" tabindex="0">
-        <div class="car"><div class="carbox"><img alt=""></div></div>
+        <div class="car"><div class="carbox"><img alt=""><div class="paint"></div></div></div>
         <div class="line l1">
           <span class="name"><span class="p"></span>
             <span class="lock"><ha-icon></ha-icon></span>
@@ -290,7 +296,7 @@ class TeslaModel3Card extends HTMLElement {
       </ha-card>`;
     const $ = (s) => this.shadowRoot.querySelector(s);
     this._el = {
-      card: $("ha-card"), carbox: $(".carbox"), img: $(".carbox > img"), name: $(".p"),
+      card: $("ha-card"), carbox: $(".carbox"), img: $(".carbox > img"), paint: $(".paint"), name: $(".p"),
       lock: $(".lock"), lockIcon: $(".lock ha-icon"),
       sentry: $(".badge.sentry"), charge: $(".badge.charge"), chargeLeft: $(".badge.charge .left"), update: $(".badge.update"),
       pct: $(".pct"), status: $(".status"), range: $(".range"),
@@ -320,6 +326,7 @@ class TeslaModel3Card extends HTMLElement {
     const box = this._el.carbox;
     box.style.setProperty("--tc-ar", String(ar));
     box.querySelectorAll(".wheel").forEach((el) => el.remove());
+    this._maskPaint();
     for (const wh of this._config.wheels) {
       const x = wh.x / 100, y = wh.y / 100, rx = wh.rx / 100, ry = wh.ry / 100;
       if (rx <= 0 || ry <= 0) continue;
@@ -347,6 +354,20 @@ class TeslaModel3Card extends HTMLElement {
       el.appendChild(spin);
       box.appendChild(el);
     }
+  }
+
+  /* The paint covers the car's own pixels, except the wheels (they keep their rims). */
+  _maskPaint() {
+    const url = `url("${String(this._config.image).replace(/["\\]/g, "\\$&")}")`;
+    const holes = this._config.wheels.filter((wh) => wh.rx > 0 && wh.ry > 0)
+      .map((wh) => `radial-gradient(ellipse ${wh.rx}% ${wh.ry}% at ${wh.x}% ${wh.y}%, #000 98%, transparent 100%)`);
+    const st = this._el.paint.style;
+    const layers = [url, ...holes].join(", ");
+    st.setProperty("-webkit-mask-image", layers);
+    st.setProperty("mask-image", layers);
+    // Picture minus the union of the wheels (the first layer is the top one).
+    st.setProperty("-webkit-mask-composite", holes.length ? "source-out, source-over" : "source-over");
+    st.setProperty("mask-composite", holes.length ? "subtract, add" : "add");
   }
 
   /* ---- actions ------------------------------------------------------------ */

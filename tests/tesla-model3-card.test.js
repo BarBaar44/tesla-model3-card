@@ -308,6 +308,14 @@ async function editorTests() {
   assert.equal(Editor.toConfig(d3, hexed).colors.locked, "#4caf50");
   d3.colors.locked = [155, 155, 155];
   assert.equal(Editor.toConfig(d3, hexed).colors.locked, undefined, "back to the default removes it");
+  // car paint: default white (no change), picker included, mask = picture minus the wheels
+  assert.deepEqual(Editor.toData({}).colors.car, [255, 255, 255]);
+  const painted = render(base(), { colors: { car: "#c62828" } });
+  assert.equal(painted.style.getPropertyValue("--tc-car"), "#c62828");
+  const mask = painted.shadowRoot.querySelector(".paint").style.getPropertyValue("mask-image");
+  assert.ok(mask.includes("teslam3.png") && (mask.match(/radial-gradient/g) || []).length === 2, mask);
+  const noWheels = render(base(), { image: "/local/other.png" }).shadowRoot.querySelector(".paint").style;
+  assert.ok(!noWheels.getPropertyValue("mask-image").includes("radial-gradient"));
   const rgbCard = render(base(), { colors: { sentry_on: [1, 2, 3] } });
   assert.equal(rgbCard.style.getPropertyValue("--tc-sentry-on"), "#010203", "[r, g, b] in YAML works");
 

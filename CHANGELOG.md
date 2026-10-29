@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+* **Car colour:** `colors.car` paints the car, with a picker in the editor. White (the default) leaves the picture as it is; the rims stay white.
+
 ### Changed
 * **Colour pickers** in the visual editor instead of text fields. A picked colour is written as hex; a colour name or `var()` set in YAML is kept until another colour is picked; picking the default removes the key. `colors` also accepts `[r, g, b]`.
 
